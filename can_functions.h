@@ -3,6 +3,12 @@
 
 #include <Arduino.h>
 #include <stdint.h>
+struct can_frame;
+
+// Set to 0 if Nano/Uno still does not fit. Protocol state logs stay enabled.
+#ifndef RAW_CAN_LOG
+#define RAW_CAN_LOG 1
+#endif
 
 // Прототип функции отправки CAN-сообщения
 void sendCanMessage(uint32_t id, uint8_t dlc, const uint8_t *data);
@@ -21,6 +27,17 @@ void processAir(String input);
 void logging(uint32_t id, uint8_t dlc, const uint8_t *data);
 void mfl(uint8_t mflValue);
 bool isFilteredID(unsigned int id);
+
+// Compact debug / protocol helpers
+void printHex2(uint8_t v);
+void dbgState();
+void dbgTimeout(uint8_t code);
+void dbgDdp(uint8_t code, const struct can_frame &frame);
+void dbgErr(uint8_t code, const struct can_frame &frame);
+bool isTachoTpRequest(const struct can_frame &frame);
+bool isTachoTimingRequest(const struct can_frame &frame);
+bool isDdpStatusOrError(const struct can_frame &frame);
+void startFisSessionFromTacho();
 
 // Прототип функции heartBeat()
 void heartBeat();

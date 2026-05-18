@@ -3,7 +3,7 @@
 #include "can_functions.h"
 #include <Arduino.h>
 
-void processChanelCreate() {
+void processChanelCreateUpper() {
   if (msgState == M_Init) {
     if (!responseAwait && millis() - lastSendMessage >= delayMessages) {
       
@@ -43,7 +43,7 @@ void processChanelCreate() {
       dataFrame();
     } else if (!responseAwait && millis() - lastReceivedMessaage < delayMessages) {
       return;
-    } else if (responseAwait && rxMsg.can_id == 0x699 && rxMsg.can_dlc >= 1 && rxMsg.data[0] == 0xB2) {
+    } else if (responseAwait && rxMsg.can_id == 0x699 && rxMsg.can_dlc >= 1 && rxMsg.data[0] == 0xB1) {
       lastReceivedMessaage = millis();
       msgState = Status_Req;
       responseAwait = true;
@@ -62,11 +62,15 @@ void processChanelCreate() {
     if (responseAwait && rxMsg.can_id == 0x699 && rxMsg.can_dlc >= 2 && rxMsg.data[0] == 0x10) {
       if (rxMsg.data[1] == 0x23 && rxMsg.can_dlc >= 4) {
         lastReceivedMessaage = millis();
-        ddpChannel = rxMsg.data[2];
+        uint8_t assigned = rxMsg.data[2];
+        if (assigned == ddpChannel && ddpChannel != 0xFF) {
+          Serial.println(F("[UC]sameID"));
+        }
+        ddpChannelUpper = assigned;
         aprMessage(1);
         responseAwait = true;
         chanelStatus = (rxMsg.data[3] == 0x01);
-        mainChannelReady = true;
+        upperChannelReady = true;
         dbgDdp(1, rxMsg);
         msgState = End_Wait;
       } else if (rxMsg.data[1] == 0x2B) {
@@ -90,19 +94,17 @@ void processChanelCreate() {
     }
   } else if (msgState == End_Wait) {
     if (responseAwait && millis() - lastSendMessage >= delayMessages) {
-      // For dual-channel mode do not use OP 0x15 as mandatory activation here.
-      // OP 0x15 is participant status, not per-channel activation; in logs it produced 0x35 logged-off.
       if (!chanelStatus) {
-        Serial.println(F("[MC]lock"));
+        Serial.println(F("[UC]lock"));
       }
-      progState = Chanel_Create_Upper;
+      progState = ID_Prior_Upper;
       msgState = M_Init;
       responseAwait = false;
       endMessage();
     } else if (responseAwait && millis() - lastSendMessage < delayMessages) {
       return;
     } else {
-      Serial.println(F("[MC]A8"));
+      Serial.println(F("[UC]A8"));
     }
   }
 }

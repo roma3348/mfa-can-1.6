@@ -1,88 +1,54 @@
-#include "can_functions.h"
 #include "globals.h"
+#include "can_functions.h"
 #include <string.h>
 
 
-void logging(uint32_t id, uint8_t dlc, const uint8_t *data) {
-  if (isFilteredID(id)) {
-    unsigned long t = millis();
-    unsigned long hours = t / 3600000;
-    unsigned long minutes = (t % 3600000) / 60000;
-    unsigned long seconds = (t % 60000) / 1000;
-    unsigned long msec = t % 1000;
+void printHex2(uint8_t v) {
+  if (v < 0x10) Serial.print('0');
+  Serial.print(v, HEX);
+}
 
-    // Форматируем время в ЧЧ:ММ:СС.ммм
-    if (hours < 10) Serial.print("0");
-    Serial.print(hours);
-    Serial.print(":");
-    if (minutes < 10) Serial.print("0");
-    Serial.print(minutes);
-    Serial.print(":");
-    if (seconds < 10) Serial.print("0");
-    Serial.print(seconds);
-    Serial.print(".");
-    if (msec < 100) {
-      if (msec < 10) Serial.print("00");
-      else Serial.print("0");
-    }
-    Serial.print(msec);
-    Serial.print(" RECEIVED -> ");
-
-    // Выводим остальной текст
-    Serial.print(F("[CAN] ID: 0x"));
-    Serial.print(id, HEX);
-    Serial.print(F(" DLC: "));
-    Serial.print(dlc);
-    Serial.print(F(" | DATA: "));
-    for (int i = 0; i < dlc; i++) {
-      Serial.print(data[i], HEX);
-      Serial.print(" ");
-    }
-    Serial.println();
+static void printCanLine(char dir, uint32_t id, uint8_t dlc, const uint8_t *data) {
+  Serial.print(millis());
+  Serial.print(dir == 'R' ? F(" R ") : F(" T "));
+  Serial.print(id, HEX);
+  Serial.print(' ');
+  Serial.print(dlc);
+  Serial.print(' ');
+  for (uint8_t i = 0; i < dlc; i++) {
+    printHex2(data[i]);
+    Serial.print(' ');
   }
+  Serial.println();
+}
+
+void logging(uint32_t id, uint8_t dlc, const uint8_t *data) {
+#if RAW_CAN_LOG
+  if (isFilteredID(id)) {
+    printCanLine('R', id, dlc, data);
+  }
+#endif
 }
 
 void sendCanMessage(uint32_t id, uint8_t dlc, const uint8_t *data) {
-  unsigned long t = millis();
   txMsg.can_id = id;
   txMsg.can_dlc = dlc;
   memcpy(txMsg.data, data, dlc);
-  if (mcp2515.sendMessage(&txMsg) == MCP2515::ERROR_OK) {
-    unsigned long hours = t / 3600000;
-    unsigned long minutes = (t % 3600000) / 60000;
-    unsigned long seconds = (t % 60000) / 1000;
-    unsigned long msec = t % 1000;
 
-    // Форматируем время в ЧЧ:ММ:СС.ммм
-    if (hours < 10) Serial.print("0");
-    Serial.print(hours);
-    Serial.print(":");
-    if (minutes < 10) Serial.print("0");
-    Serial.print(minutes);
-    Serial.print(":");
-    if (seconds < 10) Serial.print("0");
-    Serial.print(seconds);
-    Serial.print(".");
-    if (msec < 100) {
-      if (msec < 10) Serial.print("00");
-      else Serial.print("0");
-    }
-    Serial.print(msec);
-    Serial.print(" SEND ->.    ");
+  bool sent = (mcp2515.sendMessage(&txMsg) == MCP2515::ERROR_OK);
+  if (!sent) {
+    delay(2);
+    sent = (mcp2515.sendMessage(&txMsg) == MCP2515::ERROR_OK);
+  }
 
-    // Выводим остальной текст
-    Serial.print(F("[CAN] ID: 0x"));
-    Serial.print(id, HEX);
-    Serial.print(F(" DLC: "));
-    Serial.print(dlc);
-    Serial.print(F(" | DATA: "));
-    for (int i = 0; i < dlc; i++) {
-      Serial.print(data[i], HEX);
-      Serial.print(" ");
+  if (sent) {
+#if RAW_CAN_LOG
+    if (isFilteredID(id)) {
+      printCanLine('T', id, dlc, data);
     }
-    Serial.println();
+#endif
   } else {
-    Serial.println(F("Ошибка отправки"));
+    Serial.println(F("[ERR]TX"));
   }
 }
 
@@ -138,15 +104,16 @@ void dataFrame() {
       lastSendMessage = millis();
       break;
     }
-    case Chanel_Activate: {
-      const uint8_t cData[6] = { 0x10, 0x15, 0x39, 0x20, 0x01, 0x01 };
-      sendCanMessage(0x6B9, 6, cData);
+    case Chanel_Create_Upper: {
+      // OP 0x02: register DDP channel; 0x71 = without menu entry; 0x20 = upper segment.
+      const uint8_t dData[5] = { 0x10, 0x02, 0x71, 0x39, 0x20 };
+      sendCanMessage(0x6B9, 5, dData);
       responseAwait = true;
       lastSendMessage = millis();
       break;
     }
-    case ID_Prior: {
-      const uint8_t idData[3] = { 0x10, 0x0C, ddpChannel };
+    case ID_Prior_Upper: {
+      const uint8_t idData[3] = { 0x10, 0x0C, ddpChannelUpper };
       sendCanMessage(0x6B9, 3, idData);
       responseAwait = true;
       lastSendMessage = millis();
@@ -161,11 +128,11 @@ void dataFrame() {
     }
     case Data_Send: {
       if (msgState == Data_Info) {
-        Serial.println(ddpChannel,HEX);
-        const uint8_t sendData1[8] = { 0x20, 0x09, ddpChannel, 0x57, 0x0E, 0x36, 0x00, 0x00 };
+        
+        const uint8_t sendData1[8] = { 0x20, 0x09, ddpChannel, 0x57, 0x0E, 0x16, 0x08, 0x00 };
         const uint8_t sendData2[8] = { 0x21, 0x04, 0x00, 0x41, 0x49, 0x52, 0x20, 0x3A };
-        const uint8_t sendData3[8] = { 0x22, 0x20, intakeAir[0], intakeAir[1], intakeAir[2], 0x57, 0x0E, 0x36};
-        const uint8_t sendData4[8] = { 0x03, 0x00, 0x00, 0x10, 0x00, 0x4F, 0x49, 0x4C};
+        const uint8_t sendData3[8] = { 0x22, 0x20, intakeAir[0], intakeAir[1], intakeAir[2], 0x57, 0x0E, 0x16};
+        const uint8_t sendData4[8] = { 0x03, 0x08, 0x00, 0x10, 0x00, 0x4F, 0x49, 0x4C};
         sendCanMessage(0x6B9, 8, sendData1);
         sendCanMessage(0x6B9, 8, sendData2);
         sendCanMessage(0x6B9, 8, sendData3);
@@ -175,9 +142,9 @@ void dataFrame() {
       }
       if (msgState == Data_Info2) {
         const uint8_t send2Data1[8] = { 0x24, 0x20, 0x3A, 0x20, oilTemp[0], oilTemp[1], oilTemp[2], 0x57};
-        const uint8_t send2Data2[8] = { 0x25, 0x0F, 0x36, 0x00, 0x00, 0x1A, 0x00, 0x42};
+        const uint8_t send2Data2[8] = { 0x25, 0x0F, 0x16, 0x08, 0x00, 0x1A, 0x00, 0x42};
         const uint8_t send2Data3[8] = { 0x26, 0x4F, 0x4F, 0x53, 0x54, 0x3A, 0x20, boost[0]};
-        const uint8_t send2Data4[8] = { 0x07, boost[1], boost[2], 0x57, 0x0F, 0x36, 0x00, 0x00};
+        const uint8_t send2Data4[8] = { 0x07, boost[1], boost[2], 0x57, 0x0F, 0x16, 0x08, 0x00};
         sendCanMessage(0x6B9, 8, send2Data1);
         sendCanMessage(0x6B9, 8, send2Data2);
         sendCanMessage(0x6B9, 8, send2Data3);
@@ -195,6 +162,30 @@ void dataFrame() {
       }
       break;
     }
+    case Data_Send_Upper: {
+      // Upper segment as two centered text blocks in one DDP 0x09 message.
+      // Line 1, Y=0:  "XXX KM/H"   8 chars  -> len 0x0D.
+      // Line 2, Y=10: "OIL: XXX C" 10 chars -> len 0x0F.
+      // Flags 0x62 = normal font + center-oriented + overwrite display line.
+      const uint8_t upperData1[8] = { 0x20, 0x09, ddpChannelUpper, 0x57, 0x0D, 0x62, 0x00, 0x00 };
+      const uint8_t upperData2[8] = { 0x21, 0x00, 0x00, speedHEX[0], speedHEX[1], speedHEX[2], 0x20, 0x4B };
+      const uint8_t upperData3[8] = { 0x22, 0x4D, 0x2F, 0x48, 0x57, 0x0F, 0x62, 0x00 };
+      const uint8_t upperData4[8] = { 0x23, 0x00, 0x0A, 0x00, 0x4F, 0x49, 0x4C, 0x3A };
+      const uint8_t upperData5[8] = { 0x14, 0x20, oilTemp[0], oilTemp[1], oilTemp[2], 0x20, 0x43, 0x08 };
+      sendCanMessage(0x6B9, 8, upperData1);
+      delay(2);
+      sendCanMessage(0x6B9, 8, upperData2);
+      delay(2);
+      sendCanMessage(0x6B9, 8, upperData3);
+      delay(2);
+      sendCanMessage(0x6B9, 8, upperData4);
+      delay(2);
+      sendCanMessage(0x6B9, 8, upperData5);
+      Serial.println(F("[U]2L"));
+      responseAwait = true;
+      lastSendMessage = millis();
+      break;
+    }
     default:
       break;
   }
@@ -208,6 +199,82 @@ bool isFilteredID(unsigned int id) {
     if (id == pgm_read_word(&FILTERED_IDS[i])) return true;
   }
   return false;
+}
+
+
+void dbgState() {
+  if (progState != lastLoggedProgState || msgState != lastLoggedMsgState) {
+    Serial.print(F("[S]p="));
+    Serial.print((uint8_t)progState);
+    Serial.print(F(" m="));
+    Serial.print((uint8_t)msgState);
+    Serial.print(F(" r="));
+    Serial.print(responseAwait ? 1 : 0);
+    Serial.print(F(" a="));
+    Serial.print(activeDdpChannel);
+    Serial.print(F(" c="));
+    printHex2(ddpChannel);
+    Serial.print('/');
+    printHex2(ddpChannelUpper);
+    Serial.println();
+    lastLoggedProgState = progState;
+    lastLoggedMsgState = msgState;
+  }
+}
+
+
+void dbgTimeout(uint8_t code) {
+  Serial.print(F("[T]"));
+  Serial.print(code);
+  Serial.print(F(" p="));
+  Serial.print((uint8_t)progState);
+  Serial.print(F(" m="));
+  Serial.println((uint8_t)msgState);
+}
+
+void dbgDdp(uint8_t code, const struct can_frame &frame) {
+  Serial.print(F("[D]"));
+  Serial.print(code);
+  Serial.print(F(" op="));
+  if (frame.can_dlc > 1) printHex2(frame.data[1]); else Serial.print(F("--"));
+  Serial.print(F(" ch="));
+  if (frame.can_dlc > 2) printHex2(frame.data[2]); else Serial.print(F("--"));
+  Serial.print(F(" st="));
+  if (frame.can_dlc > 3) printHex2(frame.data[3]); else Serial.print(F("--"));
+  Serial.println();
+}
+
+void dbgErr(uint8_t code, const struct can_frame &frame) {
+  Serial.print(F("[DE]"));
+  Serial.print(code);
+  Serial.print(F(" ch="));
+  if (frame.can_dlc > 2) printHex2(frame.data[2]); else Serial.print(F("--"));
+  Serial.print(F(" er="));
+  if (frame.can_dlc > 3) printHex2(frame.data[3]); else Serial.print(F("--"));
+  Serial.println();
+}
+
+bool isTachoTpRequest(const struct can_frame &frame) {
+  return frame.can_id == 0x2E8 && frame.can_dlc >= 3 &&
+         frame.data[0] == 0x39 && frame.data[1] == 0xC0 && frame.data[2] == 0x99;
+}
+
+bool isTachoTimingRequest(const struct can_frame &frame) {
+  return frame.can_id == 0x699 && frame.can_dlc >= 1 && frame.data[0] == 0xA0;
+}
+
+bool isDdpStatusOrError(const struct can_frame &frame) {
+  return frame.can_id == 0x699 && frame.can_dlc >= 2 && frame.data[0] == 0x10 &&
+         (frame.data[1] == 0x23 || frame.data[1] == 0x25 || frame.data[1] == 0x27 || frame.data[1] == 0x2B || frame.data[1] == 0x35);
+}
+
+void startFisSessionFromTacho() {
+  Serial.println(F("[FIS]C0"));
+  progState = FisToCan;
+  msgState = M_Init;
+  responseAwait = true;
+  lastReceivedMessaage = millis();
+  dbgState();
 }
 
 void processHex(uint8_t hexValue, uint8_t* outputArray, uint8_t &outputLength) {
@@ -313,16 +380,15 @@ void processAir(String input){
             colTemp[2] = value3;
           }
           else {
-            Serial.print("Неизвестная метка: ");
-            Serial.println(label);
+            Serial.println(F("[PARSE]label"));
           }
         }
         else {
-          Serial.println("Ошибка разбора: недостаточно данных в секции.");
+          Serial.println(F("[PARSE]short"));
         }
       }
       else {
-        Serial.println("Ошибка разбора: отсутствует ':' в секции.");
+        Serial.println(F("[PARSE]colon"));
       }
     }
 
@@ -331,31 +397,23 @@ void processAir(String input){
 }
 
 void mfl(uint8_t mflValue) {
-  if(mflValue == 0x0){
-      const uint8_t idData[2] = { 0x0, 0x00};
-      sendCanMessage(0x5c3, 2, idData);// Defaul, none button pressed
-  }
-  if(mflValue == 0x6){
-      const uint8_t idData[2] = { 0x0, 0x06};
-      sendCanMessage(0x5c3, 2, idData);// Defaul, none button pressed
-  }
-  if(mflValue == 0x7){
-      const uint8_t idData[2] = { 0x0, 0x07};
-      sendCanMessage(0x5c3, 2, idData);// Defaul, none button pressed
+  if(mflValue == 0x0A){
+      const uint8_t idData[1] = {0x01};
+      sendCanMessage(0x5c1, 1, idData);// Defaul, none button pressed
   }
   if(mflValue == 0x22){
-      const uint8_t idData[2] = { 0x0, 0x02};
-      sendCanMessage(0x5c3, 2, idData);// Defaul, none button pressed
+      const uint8_t idData[1] = {0x03};
+      sendCanMessage(0x5c1, 1, idData);// Defaul, none button pressed
   }
   if(mflValue == 0x23){
-      const uint8_t idData[2] = { 0x0, 0x03};
-      sendCanMessage(0x5c3, 2, idData);// Defaul, none button pressed
+      const uint8_t idData[1] = { 0x02};
+      sendCanMessage(0x5c1, 1, idData);// Defaul, none button pressed
   }
-  if(mflValue == 0x2B){
-      Serial.println(F("Перезагрузка"));
-      ProgramState progState = DDP_Delete;
-      MessageState msgState = M_Init;
-      HeartBeatState hbState = h_Registry;
+  if(mflValue == 0x28){
+      Serial.println(F("[RST]"));
+      progState = DDP_Delete;
+      msgState = M_Init;
+      hbState = h_Registry;
       wdt_enable(WDTO_15MS);   // срабатывание примерно через 15 мс
       while (1) { }
   }
@@ -365,20 +423,20 @@ void heartBeat() {
   if (hbState == h_Operate) {
     const uint8_t heartBeatData[6] = { 0x00, 0x01, 0x00, 0x00, 0x00, 0x00 };
     sendCanMessage(0x439, 6, heartBeatData);
-    Serial.println(F("Heartbeat отправлен"));
+    
     hbregistered = true;
   } else if (hbState == h_Registry) {
     const uint8_t registerData[6] = { 0x19, 0x02, 0x00, 0x01, 0x00, 0x00 };
     delay(10);
     sendCanMessage(0x439, 6, registerData);
-    Serial.println(F("Регистрация нового участника CAN отправлена"));
+    
     if (hbregistered == false) {
       hbregistered = false;
     }
   } else if (hbState == h_Standby) {
     const uint8_t standByData[6] = { 0x00, 0x11, 0x00, 0x00, 0x00, 0x00 };
     sendCanMessage(0x439, 6, standByData);
-    Serial.println(F("Can в режиме StandBy"));
+    
     hbregistered = true;
   }
 }
@@ -412,6 +470,14 @@ void checkIgnitionState (uint32_t id, uint8_t dlc, const uint8_t *data) {
     hbState = h_Standby;
     progState = DDP_Delete;
     msgState = M_Init;
+    ddpChannel = 0xFF;
+    ddpChannelUpper = 0xFF;
+    mainChannelReady = false;
+    upperChannelReady = false;
+    activeDdpChannel = 0;
+    lastMainUpdate = 0;
+    lastUpperUpdate = 0;
+    displayCooldownUntil = 0;
   }
   else {
     return;

@@ -6,6 +6,19 @@
 void processDataSend() {
   if (msgState == M_Init) 
   {
+    if (!responseAwait) {
+      unsigned long now = millis();
+      if (now < displayCooldownUntil) return;
+      if (lastMainUpdate != 0 && now - lastMainUpdate < mainMinInterval) {
+        if (ddpChannelUpper != 0xFF && (lastUpperUpdate == 0 || now - lastUpperUpdate >= upperMinInterval)) {
+          activeDdpChannel = 1;
+          progState = Data_Send_Upper;
+          msgState = M_Init;
+          Serial.println(F("[TH]M>U"));
+        }
+        return;
+      }
+    }
     if (!responseAwait && millis() - lastSendMessage >= delayMessages) 
       {
         messageInit();
@@ -41,9 +54,9 @@ void processDataSend() {
           lastReceivedMessaage = millis();
           msgState = M_Init;
           responseAwait = false;
-          Serial.println(F("Канал не приоритизирован----- ОШИБКА"));
+          Serial.println(F("[CH]p"));
         } else {
-          Serial.println(F("Канал не приоритизирован ----- Другая ошибка"));
+          Serial.println(F("[CH]e"));
         }
       }
   }
@@ -77,9 +90,9 @@ void processDataSend() {
           lastReceivedMessaage = millis();
           msgState = M_Init;
           responseAwait = false;
-          Serial.println(F("Канал не приоритизирован----- ОШИБКА"));
+          Serial.println(F("[CH]p"));
         } else {
-          Serial.println(F("Канал не приоритизирован ----- Другая ошибка"));
+          Serial.println(F("[CH]e"));
         }
       }
   } else if (msgState == Data_Info) {
@@ -141,16 +154,16 @@ void processDataSend() {
           lastReceivedMessaage = millis();
           msgState = M_Init;
           responseAwait = false;
-          Serial.println(F("Канал не приоритизирован----- ОШИБКА"));
+          Serial.println(F("[CH]p"));
         }
         else if (rxMsg.data[1] == 0x2B) {
           lastReceivedMessaage = millis();
           msgState = M_Init;
           responseAwait = false;
-          Serial.println(F("Канал не приоритизирован----- ОШИБКА"));
+          Serial.println(F("[CH]p"));
         }
          else {
-          Serial.println(F("Канал не приоритизирован ----- Другая ошибка"));
+          Serial.println(F("[CH]e"));
         }
       }
     else if (responseAwait && millis() - lastSendMessage >= responseMessagesMax) 
@@ -175,9 +188,9 @@ void processDataSend() {
         aprMessage(1);
         msgState = M_Init;
         responseAwait = false;
-        Serial.println(F("Ошибка канала"));
+        Serial.println(F("[CH]e"));
       } else {
-        Serial.println(F("Канал не приоритизирован ----- Другая ошибка"));
+        Serial.println(F("[CH]e"));
       }
     }
     else if (responseAwait && millis() - lastSendMessage >= responseMessagesMax) {
@@ -186,19 +199,24 @@ void processDataSend() {
     }
   } else if (msgState == End_Wait) {
     if (responseAwait && millis() - lastSendMessage >= delayMessages) {
-      if (chanelStatus == true) {
+      lastMainUpdate = millis();
+      if (ddpChannelUpper != 0xFF) {
+        activeDdpChannel = 1;
+        progState = Data_Send_Upper;
+        Serial.println(chanelStatus ? F("[M]>U") : F("[M]L>U"));
+      } else if (chanelStatus == true) {
+        activeDdpChannel = 0;
         progState = Data_Send;
-        msgState = M_Init;
-      } else if (chanelStatus == false) {
+      } else {
         progState = Request_Await;
-        msgState = M_Init;
       }
+      msgState = M_Init;
       responseAwait = false;
       endMessage();
     } else if (responseAwait && millis() - lastSendMessage < delayMessages) {
       return;
     } else {
-      Serial.println(F("Ошибка отправки A8"));
+      Serial.println(F("[A8]err"));
     }
   }
 }       

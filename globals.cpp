@@ -10,8 +10,14 @@ bool messageAwait = false;
 bool heartbeatAwait = false;
 bool hbregistered = false;
 uint8_t ddpChannel = 0xFF;
+uint8_t ddpChannelUpper = 0xFF;
 uint8_t ignitionChannel = 0x271;
 bool chanelStatus = false;
+bool mainChannelReady = false;
+bool upperChannelReady = false;
+uint8_t activeDdpChannel = 0; // 0 = main/middle channel, 1 = upper channel
+ProgramState lastLoggedProgState = Request_Await;
+MessageState lastLoggedMsgState = End_Wait;
 
 // Константный массив в PROGMEM
 const unsigned int FILTERED_IDS[] PROGMEM = { 0x4D9, 0x2E8, 0x6B9, 0x699, 0x439, 0x436};
@@ -24,6 +30,12 @@ unsigned long lastSendMessage = 0;
 unsigned long lastReceivedMessaage = 0;
 unsigned long responseMessagesMax = 500;
 unsigned long delayMessages = 1;
+unsigned long lastMainUpdate = 0;
+unsigned long lastUpperUpdate = 0;
+unsigned long mainMinInterval = 1000;
+unsigned long upperMinInterval = 800;
+unsigned long displayCooldownUntil = 0;
+unsigned long errorCooldownInterval = 250;
 
 // Состояния
 ProgramState progState = DDP_Delete;

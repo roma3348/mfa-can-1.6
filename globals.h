@@ -14,7 +14,17 @@ extern struct can_frame rxMsg, txMsg;
 extern MCP2515 mcp2515;
 
 // Перечисления состояний
-enum ProgramState { DDP_Delete, Segment_Request, Chanel_Create, Chanel_Activate, ID_Prior, Data_Send, FisToCan, Request_Await };
+enum ProgramState {
+  DDP_Delete,
+  Segment_Request,
+  Chanel_Create,
+  Chanel_Create_Upper,
+  ID_Prior_Upper,
+  Data_Send,
+  Data_Send_Upper,
+  FisToCan,
+  Request_Await
+};
 enum MessageState { M_Init, Sys_Info, Data_Info, Data_Info2, Data_Info3, Status_Req, End_Wait };
 enum HeartBeatState { h_Registry, h_Operate, h_Standby, h_Error };
 enum IgnitionState { i_Off, i_Operate, i_Start };
@@ -25,8 +35,14 @@ extern bool messageAwait;
 extern bool heartbeatAwait;
 extern bool hbregistered;
 extern uint8_t ddpChannel;
+extern uint8_t ddpChannelUpper;
 extern uint8_t ignitionChannel;
 extern bool chanelStatus;
+extern bool mainChannelReady;
+extern bool upperChannelReady;
+extern uint8_t activeDdpChannel;
+extern ProgramState lastLoggedProgState;
+extern MessageState lastLoggedMsgState;
 
 // Константы в PROGMEM
 extern const unsigned int FILTERED_IDS[] PROGMEM;
@@ -39,6 +55,12 @@ extern unsigned long lastSendMessage;
 extern unsigned long lastReceivedMessaage;
 extern unsigned long responseMessagesMax;
 extern unsigned long delayMessages;
+extern unsigned long lastMainUpdate;
+extern unsigned long lastUpperUpdate;
+extern unsigned long mainMinInterval;
+extern unsigned long upperMinInterval;
+extern unsigned long displayCooldownUntil;
+extern unsigned long errorCooldownInterval;
 
 // Текущие состояния
 extern ProgramState progState;

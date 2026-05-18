@@ -5,8 +5,9 @@
 void processDDPDelete();
 void processDataFromFis();
 void processChanelCreate();
-void processChanelActivate();
-void processIDPrior();
+void processChanelCreateUpper();
+void processIDPriorUpper();
 void processDataSend();
+void processDataSendUpper();
 
 #endif

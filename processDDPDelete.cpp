@@ -37,7 +37,7 @@ void processDDPDelete() {
       msgState = M_Init;
       responseAwait = false;
     } else {
-      Serial.println(F("Ошибка таймингов в Chanel_Create"));
+      Serial.println(F("[T]del"));
     }
   } else if (msgState == Data_Info) {
     if (!responseAwait && millis() - lastReceivedMessaage >= delayMessages) {
@@ -69,7 +69,7 @@ void processDDPDelete() {
       msgState = End_Wait;
     } else if (responseAwait && millis() - lastSendMessage >= responseMessagesMax) {
       msgState = M_Init;
-      Serial.println(F("Ошибка удаления прошлых каналов"));
+      Serial.println(F("[DEL]err"));
     }
   } else if (msgState == End_Wait) {
     if (responseAwait && millis() - lastSendMessage >= delayMessages) {
@@ -80,7 +80,7 @@ void processDDPDelete() {
     } else if (responseAwait && millis() - lastSendMessage < delayMessages) {
       return;
     } else {
-      Serial.println(F("Ошибка отправки A8"));
+      Serial.println(F("[A8]err"));
     }
   }
 }
